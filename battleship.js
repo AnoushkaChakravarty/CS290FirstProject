@@ -1,0 +1,797 @@
+import React, { useState, useEffect } from 'react';
+import { AlertCircle, Anchor, Target, Crosshair } from 'lucide-react';
+
+const GRID_SIZE = 10;
+const SHIPS = [
+  { name: 'Carrier', size: 5, icon: '🚢' },
+  { name: 'Battleship', size: 4, icon: '⚓' },
+  { name: 'Cruiser', size: 3, icon: '🛳️' },
+  { name: 'Submarine', size: 3, icon: '🚤' },
+  { name: 'Destroyer', size: 2, icon: '⛵' }
+];
+
+export default function Battleship() {
+  const [gamePhase, setGamePhase] = useState('placement'); // placement, difficulty, playing
+  const [playerGrid, setPlayerGrid] = useState(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null)));
+  const [computerGrid, setComputerGrid] = useState(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null)));
+  const [playerShots, setPlayerShots] = useState(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false)));
+  const [computerShots, setComputerShots] = useState(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false)));
+  const [selectedShip, setSelectedShip] = useState(null);
+  const [orientation, setOrientation] = useState('horizontal'); // horizontal or vertical
+  const [hoveredCells, setHoveredCells] = useState([]);
+  const [placedShips, setPlacedShips] = useState([]);
+  const [difficulty, setDifficulty] = useState(null);
+  const [currentTurn, setCurrentTurn] = useState('player');
+  const [gameOver, setGameOver] = useState(false);
+  const [winner, setWinner] = useState(null);
+  const [message, setMessage] = useState('');
+  const [computerTargets, setComputerTargets] = useState([]); // For hard mode AI
+
+  // Generate computer's ship positions
+  const placeComputerShips = () => {
+    const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+    const ships = [...SHIPS];
+    
+    for (let ship of ships) {
+      let placed = false;
+      let attempts = 0;
+      
+      while (!placed && attempts < 100) {
+        const isHorizontal = Math.random() > 0.5;
+        const row = Math.floor(Math.random() * GRID_SIZE);
+        const col = Math.floor(Math.random() * GRID_SIZE);
+        
+        if (canPlaceShip(newGrid, row, col, ship.size, isHorizontal)) {
+          for (let i = 0; i < ship.size; i++) {
+            const r = isHorizontal ? row : row + i;
+            const c = isHorizontal ? col + i : col;
+            newGrid[r][c] = ship.name;
+          }
+          placed = true;
+        }
+        attempts++;
+      }
+    }
+    
+    setComputerGrid(newGrid);
+  };
+
+  // Check if ship can be placed
+  const canPlaceShip = (grid, row, col, size, isHorizontal) => {
+    if (isHorizontal) {
+      if (col + size > GRID_SIZE) return false;
+      for (let i = 0; i < size; i++) {
+        if (grid[row][col + i]) return false;
+      }
+    } else {
+      if (row + size > GRID_SIZE) return false;
+      for (let i = 0; i < size; i++) {
+        if (grid[row + i][col]) return false;
+      }
+    }
+    return true;
+  };
+
+  // Handle cell hover during placement
+  const handleCellHover = (row, col) => {
+    if (gamePhase !== 'placement' || !selectedShip) return;
+    
+    const cells = [];
+    const isHorizontal = orientation === 'horizontal';
+    
+    for (let i = 0; i < selectedShip.size; i++) {
+      const r = isHorizontal ? row : row + i;
+      const c = isHorizontal ? col + i : col;
+      if (r < GRID_SIZE && c < GRID_SIZE) {
+        cells.push({ row: r, col: c });
+      }
+    }
+    
+    setHoveredCells(cells);
+  };
+
+  // Place ship on player grid
+  const placeShip = (row, col) => {
+    if (!selectedShip || gamePhase !== 'placement') return;
+    
+    const isHorizontal = orientation === 'horizontal';
+    if (!canPlaceShip(playerGrid, row, col, selectedShip.size, isHorizontal)) {
+      setMessage('Cannot place ship here!');
+      setTimeout(() => setMessage(''), 2000);
+      return;
+    }
+    
+    const newGrid = playerGrid.map(r => [...r]);
+    for (let i = 0; i < selectedShip.size; i++) {
+      const r = isHorizontal ? row : row + i;
+      const c = isHorizontal ? col + i : col;
+      newGrid[r][c] = selectedShip.name;
+    }
+    
+    setPlayerGrid(newGrid);
+    setPlacedShips([...placedShips, selectedShip.name]);
+    setSelectedShip(null);
+    setHoveredCells([]);
+  };
+
+  // Handle player attack
+  const handlePlayerAttack = (row, col) => {
+    if (gamePhase !== 'playing' || currentTurn !== 'player' || gameOver) return;
+    if (playerShots[row][col]) return;
+    
+    const newShots = playerShots.map(r => [...r]);
+    newShots[row][col] = true;
+    setPlayerShots(newShots);
+    
+    const hit = computerGrid[row][col] !== null;
+    setMessage(hit ? '💥 HIT!' : '💨 Miss...');
+    
+    setTimeout(() => {
+      setMessage('');
+      if (checkWinner(newShots, computerGrid)) {
+        setGameOver(true);
+        setWinner('player');
+      } else {
+        setCurrentTurn('computer');
+      }
+    }, 1000);
+  };
+
+  // Computer's turn
+  useEffect(() => {
+    if (currentTurn === 'computer' && gamePhase === 'playing' && !gameOver) {
+      const computerAttack = setTimeout(() => {
+        let row, col;
+        let attempts = 0;
+        
+        if (difficulty === 'hard' && computerTargets.length > 0) {
+          // Hard mode: target adjacent cells after a hit
+          const target = computerTargets[0];
+          row = target.row;
+          col = target.col;
+          setComputerTargets(prev => prev.slice(1));
+        } else {
+          // Random shot - ensure we find an unshot cell
+          do {
+            row = Math.floor(Math.random() * GRID_SIZE);
+            col = Math.floor(Math.random() * GRID_SIZE);
+            attempts++;
+          } while (computerShots[row][col] && attempts < 100);
+          
+          // Safety check - if we can't find a spot, game might be over
+          if (attempts >= 100) {
+            setGameOver(true);
+            setWinner('computer');
+            return;
+          }
+        }
+        
+        // Update shots immediately
+        setComputerShots(prevShots => {
+          const newShots = prevShots.map(r => [...r]);
+          newShots[row][col] = true;
+          
+          const hit = playerGrid[row][col] !== null;
+          
+          if (hit && difficulty === 'hard') {
+            // Add adjacent cells to targets for hard mode
+            const adjacent = [
+              { row: row - 1, col },
+              { row: row + 1, col },
+              { row, col: col - 1 },
+              { row, col: col + 1 }
+            ].filter(({ row: r, col: c }) => 
+              r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE && !newShots[r][c]
+            );
+            setComputerTargets(prev => [...prev, ...adjacent]);
+          }
+          
+          // Check for winner after a brief delay
+          setTimeout(() => {
+            if (checkWinner(newShots, playerGrid)) {
+              setGameOver(true);
+              setWinner('computer');
+            } else {
+              setCurrentTurn('player');
+            }
+          }, 500);
+          
+          return newShots;
+        });
+      }, 1500);
+      
+      return () => clearTimeout(computerAttack);
+    }
+  }, [currentTurn, gamePhase, gameOver, computerShots, playerGrid, difficulty, computerTargets]);
+
+  // Check if all ships are sunk
+  const checkWinner = (shots, grid) => {
+    for (let row = 0; row < GRID_SIZE; row++) {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        if (grid[row][col] && !shots[row][col]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  // Start game
+  const startGame = (selectedDifficulty) => {
+    setDifficulty(selectedDifficulty);
+    placeComputerShips();
+    setGamePhase('playing');
+    setMessage('Your turn! Click on the top grid to attack.');
+  };
+
+  // Reset game
+  const resetGame = () => {
+    setGamePhase('placement');
+    setPlayerGrid(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null)));
+    setComputerGrid(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null)));
+    setPlayerShots(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false)));
+    setComputerShots(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false)));
+    setSelectedShip(null);
+    setPlacedShips([]);
+    setDifficulty(null);
+    setCurrentTurn('player');
+    setGameOver(false);
+    setWinner(null);
+    setMessage('');
+    setComputerTargets([]);
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #0a1929 0%, #1a2332 50%, #0d1b2a 100%)',
+      color: '#e0f2ff',
+      fontFamily: '"Orbitron", "Courier New", monospace',
+      padding: '2rem',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Background Effect */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%)',
+        pointerEvents: 'none'
+      }} />
+
+      <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+        <h1 style={{
+          textAlign: 'center',
+          fontSize: '3.5rem',
+          fontWeight: 'bold',
+          marginBottom: '0.5rem',
+          textShadow: '0 0 20px rgba(59, 130, 246, 0.6)',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase'
+        }}>
+          ⚓ BATTLESHIP ⚓
+        </h1>
+        
+        <p style={{
+          textAlign: 'center',
+          color: '#94a3b8',
+          marginBottom: '2rem',
+          fontSize: '0.9rem',
+          letterSpacing: '0.05em'
+        }}>
+          NAVAL TACTICAL COMBAT SIMULATOR
+        </p>
+
+        {message && (
+          <div style={{
+            position: 'fixed',
+            top: '2rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(59, 130, 246, 0.95)',
+            padding: '1rem 2rem',
+            borderRadius: '8px',
+            fontSize: '1.2rem',
+            fontWeight: 'bold',
+            zIndex: 1000,
+            boxShadow: '0 4px 20px rgba(59, 130, 246, 0.5)',
+            animation: 'slideDown 0.3s ease-out'
+          }}>
+            {message}
+          </div>
+        )}
+
+        {/* Placement Phase */}
+        {gamePhase === 'placement' && (
+          <div>
+            <div style={{
+              background: 'rgba(15, 23, 42, 0.6)',
+              padding: '2rem',
+              borderRadius: '12px',
+              marginBottom: '2rem',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              backdropFilter: 'blur(10px)'
+            }}>
+              <h2 style={{
+                fontSize: '1.5rem',
+                marginBottom: '1.5rem',
+                color: '#60a5fa',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <Anchor size={24} /> DEPLOY YOUR FLEET
+              </h2>
+              
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem',
+                marginBottom: '1.5rem'
+              }}>
+                {SHIPS.map(ship => (
+                  <button
+                    key={ship.name}
+                    onClick={() => setSelectedShip(ship)}
+                    disabled={placedShips.includes(ship.name)}
+                    style={{
+                      padding: '1rem',
+                      background: placedShips.includes(ship.name) 
+                        ? 'rgba(34, 197, 94, 0.2)' 
+                        : selectedShip?.name === ship.name 
+                          ? 'rgba(59, 130, 246, 0.4)' 
+                          : 'rgba(30, 41, 59, 0.5)',
+                      border: selectedShip?.name === ship.name 
+                        ? '2px solid #3b82f6' 
+                        : '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '8px',
+                      color: placedShips.includes(ship.name) ? '#86efac' : '#e0f2ff',
+                      cursor: placedShips.includes(ship.name) ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit',
+                      fontSize: '0.9rem',
+                      transition: 'all 0.2s',
+                      opacity: placedShips.includes(ship.name) ? 0.6 : 1
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{ship.icon}</div>
+                    <div style={{ fontWeight: 'bold' }}>{ship.name}</div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>Length: {ship.size}</div>
+                    {placedShips.includes(ship.name) && (
+                      <div style={{ color: '#86efac', marginTop: '0.5rem' }}>✓ DEPLOYED</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <button
+                  onClick={() => setOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: 'rgba(59, 130, 246, 0.3)',
+                    border: '1px solid rgba(59, 130, 246, 0.5)',
+                    borderRadius: '6px',
+                    color: '#e0f2ff',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    fontSize: '0.9rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  Orientation: {orientation.toUpperCase()}
+                </button>
+                <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                  {selectedShip ? `Selected: ${selectedShip.name}` : 'Select a ship to place'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
+              <div style={{ display: 'inline-block' }}>
+                <h3 style={{ 
+                  textAlign: 'center', 
+                  marginBottom: '1rem',
+                  color: '#60a5fa',
+                  fontSize: '1.2rem'
+                }}>
+                  YOUR FLEET DEPLOYMENT GRID
+                </h3>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${GRID_SIZE}, 50px)`,
+                  gap: '2px',
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '2px solid rgba(59, 130, 246, 0.4)'
+                }}>
+                  {playerGrid.map((row, rowIndex) => (
+                    row.map((cell, colIndex) => {
+                      const isHovered = hoveredCells.some(c => c.row === rowIndex && c.col === colIndex);
+                      const canPlace = selectedShip && isHovered && canPlaceShip(playerGrid, hoveredCells[0]?.row, hoveredCells[0]?.col, selectedShip.size, orientation === 'horizontal');
+                      
+                      return (
+                        <div
+                          key={`${rowIndex}-${colIndex}`}
+                          onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
+                          onClick={() => placeShip(rowIndex, colIndex)}
+                          style={{
+                            width: '50px',
+                            height: '50px',
+                            background: cell 
+                              ? 'rgba(34, 197, 94, 0.4)' 
+                              : isHovered 
+                                ? canPlace 
+                                  ? 'rgba(59, 130, 246, 0.5)' 
+                                  : 'rgba(239, 68, 68, 0.5)'
+                                : 'rgba(30, 41, 59, 0.6)',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            cursor: selectedShip ? 'pointer' : 'default',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            transition: 'all 0.15s',
+                            borderRadius: '2px'
+                          }}
+                        >
+                          {cell && '🚢'}
+                        </div>
+                      );
+                    })
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <button
+                onClick={() => setGamePhase('difficulty')}
+                disabled={placedShips.length !== SHIPS.length}
+                style={{
+                  padding: '1rem 3rem',
+                  background: placedShips.length === SHIPS.length 
+                    ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' 
+                    : 'rgba(71, 85, 105, 0.5)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  cursor: placedShips.length === SHIPS.length ? 'pointer' : 'not-allowed',
+                  fontFamily: 'inherit',
+                  letterSpacing: '0.05em',
+                  boxShadow: placedShips.length === SHIPS.length ? '0 4px 20px rgba(59, 130, 246, 0.4)' : 'none',
+                  transition: 'all 0.2s',
+                  textTransform: 'uppercase'
+                }}
+              >
+                NEXT → SELECT DIFFICULTY
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Difficulty Selection */}
+        {gamePhase === 'difficulty' && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '2rem',
+            padding: '4rem 2rem'
+          }}>
+            <h2 style={{
+              fontSize: '2rem',
+              color: '#60a5fa',
+              marginBottom: '1rem',
+              textAlign: 'center'
+            }}>
+              🎯 SELECT COMBAT DIFFICULTY
+            </h2>
+            
+            <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button
+                onClick={() => startGame('easy')}
+                style={{
+                  padding: '2rem 3rem',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  border: '2px solid rgba(16, 185, 129, 0.5)',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  fontSize: '1.3rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  letterSpacing: '0.05em',
+                  boxShadow: '0 8px 30px rgba(16, 185, 129, 0.3)',
+                  transition: 'all 0.3s',
+                  textTransform: 'uppercase',
+                  minWidth: '250px'
+                }}
+              >
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎮</div>
+                EASY MODE
+                <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', opacity: 0.9 }}>
+                  Random targeting
+                </div>
+              </button>
+
+              <button
+                onClick={() => startGame('hard')}
+                style={{
+                  padding: '2rem 3rem',
+                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  border: '2px solid rgba(239, 68, 68, 0.5)',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  fontSize: '1.3rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  letterSpacing: '0.05em',
+                  boxShadow: '0 8px 30px rgba(239, 68, 68, 0.3)',
+                  transition: 'all 0.3s',
+                  textTransform: 'uppercase',
+                  minWidth: '250px'
+                }}
+              >
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔥</div>
+                HARD MODE
+                <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', opacity: 0.9 }}>
+                  Smart AI targeting
+                </div>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setGamePhase('placement')}
+              style={{
+                padding: '0.75rem 2rem',
+                background: 'rgba(71, 85, 105, 0.5)',
+                border: '1px solid rgba(100, 116, 139, 0.5)',
+                borderRadius: '6px',
+                color: '#94a3b8',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                marginTop: '1rem'
+              }}
+            >
+              ← BACK TO PLACEMENT
+            </button>
+          </div>
+        )}
+
+        {/* Playing Phase */}
+        {gamePhase === 'playing' && (
+          <div>
+            <div style={{
+              background: 'rgba(15, 23, 42, 0.6)',
+              padding: '1.5rem',
+              borderRadius: '12px',
+              marginBottom: '2rem',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              textAlign: 'center'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-around',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '1rem'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                    DIFFICULTY
+                  </div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: difficulty === 'hard' ? '#ef4444' : '#10b981' }}>
+                    {difficulty === 'hard' ? '🔥 HARD' : '🎮 EASY'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                    CURRENT TURN
+                  </div>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: currentTurn === 'player' ? '#3b82f6' : '#f59e0b' }}>
+                    {currentTurn === 'player' ? '🎯 YOUR TURN' : '⏳ ENEMY TURN'}
+                  </div>
+                </div>
+                {gameOver && (
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                      BATTLE RESULT
+                    </div>
+                    <div style={{
+                      fontSize: '1.2rem',
+                      fontWeight: 'bold',
+                      color: winner === 'player' ? '#10b981' : '#ef4444'
+                    }}>
+                      {winner === 'player' ? '🏆 VICTORY!' : '💀 DEFEATED'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr',
+              gap: '2rem',
+              marginBottom: '2rem'
+            }}>
+              {/* Enemy Grid - Player's attacks */}
+              <div>
+                <h3 style={{
+                  textAlign: 'center',
+                  marginBottom: '1rem',
+                  color: '#ef4444',
+                  fontSize: '1.3rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <Target size={24} /> ENEMY WATERS - YOUR ATTACKS
+                </h3>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${GRID_SIZE}, 45px)`,
+                    gap: '2px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    border: '2px solid rgba(239, 68, 68, 0.4)'
+                  }}>
+                    {playerShots.map((row, rowIndex) => (
+                      row.map((shot, colIndex) => {
+                        const hit = shot && computerGrid[rowIndex][colIndex];
+                        return (
+                          <div
+                            key={`attack-${rowIndex}-${colIndex}`}
+                            onClick={() => handlePlayerAttack(rowIndex, colIndex)}
+                            style={{
+                              width: '45px',
+                              height: '45px',
+                              background: !shot 
+                                ? 'rgba(30, 41, 59, 0.6)' 
+                                : hit 
+                                  ? 'rgba(239, 68, 68, 0.8)' 
+                                  : 'rgba(100, 116, 139, 0.6)',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              cursor: !shot && currentTurn === 'player' && !gameOver ? 'crosshair' : 'not-allowed',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1.2rem',
+                              transition: 'all 0.2s',
+                              borderRadius: '2px',
+                              pointerEvents: gameOver ? 'none' : 'auto'
+                            }}
+                          >
+                            {shot && (hit ? '💥' : '💨')}
+                          </div>
+                        );
+                      })
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Player Grid - Computer's attacks */}
+              <div>
+                <h3 style={{
+                  textAlign: 'center',
+                  marginBottom: '1rem',
+                  color: '#10b981',
+                  fontSize: '1.3rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}>
+                  <Crosshair size={24} /> YOUR FLEET - ENEMY ATTACKS
+                </h3>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: `repeat(${GRID_SIZE}, 45px)`,
+                    gap: '2px',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    border: '2px solid rgba(16, 185, 129, 0.4)'
+                  }}>
+                    {computerShots.map((row, rowIndex) => (
+                      row.map((shot, colIndex) => {
+                        const hasShip = playerGrid[rowIndex][colIndex];
+                        const hit = shot && hasShip;
+                        return (
+                          <div
+                            key={`defend-${rowIndex}-${colIndex}`}
+                            style={{
+                              width: '45px',
+                              height: '45px',
+                              background: hasShip 
+                                ? shot 
+                                  ? 'rgba(239, 68, 68, 0.8)' 
+                                  : 'rgba(34, 197, 94, 0.4)'
+                                : shot 
+                                  ? 'rgba(100, 116, 139, 0.6)' 
+                                  : 'rgba(30, 41, 59, 0.6)',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1rem',
+                              borderRadius: '2px'
+                            }}
+                          >
+                            {hasShip && !shot && '🚢'}
+                            {shot && (hit ? '💥' : '💨')}
+                          </div>
+                        );
+                      })
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <button
+                onClick={resetGame}
+                style={{
+                  padding: '1rem 3rem',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  letterSpacing: '0.05em',
+                  boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
+                  transition: 'all 0.2s',
+                  textTransform: 'uppercase'
+                }}
+              >
+                🔄 NEW BATTLE
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        
+        @keyframes slideDown {
+          from {
+            transform: translate(-50%, -100%);
+            opacity: 0;
+          }
+          to {
+            transform: translate(-50%, 0);
+            opacity: 1;
+          }
+        }
+
+        button:hover:not(:disabled) {
+          transform: translateY(-2px);
+          filter: brightness(1.2);
+        }
+
+        button:active:not(:disabled) {
+          transform: translateY(0);
+        }
+      `}</style>
+    </div>
+  );
+}
