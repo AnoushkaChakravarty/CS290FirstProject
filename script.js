@@ -1,16 +1,13 @@
 const SIZE = 10;
 const SHIP_SIZES = [5, 4, 3, 3, 2];
 
-let playerBoardDiv;
-let computerBoardDiv;
-let message;
-let modeSelect;
+let playerBoardDiv, computerBoardDiv, message, modeSelect;
 
 let phase = "placement";
-let placementDirection = "horizontal";
 let currentShipIndex = 0;
+let placementDirection = "horizontal";
 
-let playerShips = [];     // array of ships (each ship = array of cells)
+let playerShips = [];
 let computerShips = [];
 
 let playerBoard = [];
@@ -29,7 +26,7 @@ function createBoard(boardDiv, clickHandler) {
     for (let c = 0; c < SIZE; c++) {
       const cell = document.createElement("button");
       cell.className = "cell";
-      cell.onclick = () => clickHandler(r, c, cell);
+      cell.addEventListener("click", () => clickHandler(r, c, cell));
       boardDiv.appendChild(cell);
       board[r][c] = cell;
     }
@@ -37,17 +34,17 @@ function createBoard(boardDiv, clickHandler) {
   return board;
 }
 
-/* ---------- SHIP HELPERS ---------- */
+/* ---------- HELPERS ---------- */
 function allShipCells(ships) {
   return ships.flat();
 }
 
 function hitShip(ships, key) {
   for (let ship of ships) {
-    const index = ship.indexOf(key);
-    if (index !== -1) {
-      ship.splice(index, 1);
-      return ship.length === 0; // sunk
+    const i = ship.indexOf(key);
+    if (i !== -1) {
+      ship.splice(i, 1);
+      return ship.length === 0;
     }
   }
   return false;
@@ -55,15 +52,12 @@ function hitShip(ships, key) {
 
 function neighbors(r, c) {
   return [
-    [r + 1, c],
-    [r - 1, c],
-    [r, c + 1],
-    [r, c - 1]
-  ].filter(([x, y]) => x >= 0 && y >= 0 && x < SIZE && y < SIZE);
+    [r+1,c],[r-1,c],[r,c+1],[r,c-1]
+  ].filter(([x,y]) => x>=0 && y>=0 && x<SIZE && y<SIZE);
 }
 
-/* ---------- PLAYER SHIP PLACEMENT ---------- */
-function placePlayerShip(r, c) {
+/* ---------- PLAYER PLACEMENT ---------- */
+function placePlayerShip(r, c, cell) {
   if (phase !== "placement") return;
 
   const size = SHIP_SIZES[currentShipIndex];
@@ -97,7 +91,7 @@ function placePlayerShip(r, c) {
   }
 }
 
-/* ---------- COMPUTER SHIP PLACEMENT ---------- */
+/* ---------- COMPUTER SHIPS ---------- */
 function placeComputerShips() {
   SHIP_SIZES.forEach(size => {
     let placed = false;
@@ -111,7 +105,6 @@ function placeComputerShips() {
       for (let i = 0; i < size; i++) {
         const nr = horizontal ? r : r + i;
         const nc = horizontal ? c + i : c;
-
         if (nr >= SIZE || nc >= SIZE) break;
 
         const key = `${nr},${nc}`;
@@ -146,13 +139,13 @@ function playerAttack(r, c, cell) {
     message.textContent = "Miss!";
   }
 
-  if (computerShips.every(ship => ship.length === 0)) {
+  if (computerShips.every(s => s.length === 0)) {
     message.textContent = "You win! 🎉";
     endGame();
     return;
   }
 
-  setTimeout(computerMove, 700);
+  setTimeout(computerMove, 600);
 }
 
 /* ---------- COMPUTER TURN ---------- */
@@ -187,13 +180,13 @@ function computerMove() {
     message.textContent = "Computer missed!";
   }
 
-  if (playerShips.every(ship => ship.length === 0)) {
+  if (playerShips.every(s => s.length === 0)) {
     message.textContent = "Computer wins 😞";
     endGame();
   }
 }
 
-/* ---------- END GAME ---------- */
+/* ---------- END ---------- */
 function endGame() {
   document.querySelectorAll(".cell").forEach(c => c.disabled = true);
 }
