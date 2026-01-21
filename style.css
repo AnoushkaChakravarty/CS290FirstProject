@@ -3,30 +3,20 @@ body {
   text-align: center;
 }
 
-#board {
+#player-board,
+#computer-board {
   display: grid;
   grid-template-columns: repeat(10, 40px);
-  gap: 5px;
-  justify-content: center;
-  margin: 20px auto;
+  gap: 4px;
+  margin-bottom: 20px;
 }
 
 .cell {
-  width: 50px;
-  height: 50px;
-  font-size: 18px;
+  width: 40px;
+  height: 40px;
   cursor: pointer;
 }
 
-.ship {
-  background-color: navy;
-}
-
-.hit {
-  background-color: crimson;
-  color: white;
-}
-
-.miss {
-  background-color: lightgray;
-}
+.ship { background: navy; }
+.hit { background: crimson; color: white; }
+.miss { background: lightgray; }
