@@ -1,32 +1,40 @@
 const SIZE = 5;
 const SHIPS = 3;
 
-const boardDiv = document.getElementById("board");
+const playerBoardDiv = document.getElementById("player-board");
+const computerBoardDiv = document.getElementById("computer-board");
 const message = document.getElementById("message");
 const modeSelect = document.getElementById("mode");
 
-let board = [];
+let phase = "placement";
+
+let playerShips = new Set();
 let computerShips = new Set();
-let usedByComputer = new Set();
+
+let playerBoard = [];
+let computerBoard = [];
+
+let computerUsed = new Set();
 let targets = [];
 
-function initBoard() {
+function createBoard(boardDiv, clickHandler) {
   boardDiv.innerHTML = "";
-  board = [];
+  const board = [];
 
   for (let r = 0; r < SIZE; r++) {
     board[r] = [];
     for (let c = 0; c < SIZE; c++) {
       const cell = document.createElement("button");
       cell.className = "cell";
-      cell.onclick = () => playerMove(r, c, cell);
+      cell.onclick = () => clickHandler(r, c, cell);
       boardDiv.appendChild(cell);
       board[r][c] = cell;
     }
   }
+  return board;
 }
 
-function placeShips() {
+function placeComputerShips() {
   while (computerShips.size < SHIPS) {
     const r = Math.floor(Math.random() * SIZE);
     const c = Math.floor(Math.random() * SIZE);
@@ -40,11 +48,30 @@ function neighbors(r, c) {
   ].filter(([x,y]) => x>=0 && y>=0 && x<SIZE && y<SIZE);
 }
 
-function playerMove(r, c, cell) {
+/* ---------- PLAYER PLACEMENT ---------- */
+
+function placePlayerShip(r, c, cell) {
+  if (phase !== "placement") return;
+
   const key = `${r},${c}`;
-  if (cell.disabled) return;
+  if (playerShips.has(key)) return;
+
+  playerShips.add(key);
+  cell.classList.add("ship");
+
+  if (playerShips.size === SHIPS) {
+    phase = "battle";
+    message.textContent = "Battle started! Attack the enemy board.";
+  }
+}
+
+/* ---------- PLAYER ATTACK ---------- */
+
+function playerAttack(r, c, cell) {
+  if (phase !== "battle" || cell.disabled) return;
 
   cell.disabled = true;
+  const key = `${r},${c}`;
 
   if (computerShips.has(key)) {
     cell.textContent = "X";
@@ -59,12 +86,14 @@ function playerMove(r, c, cell) {
 
   if (computerShips.size === 0) {
     message.textContent = "You win! 🎉";
-    disableBoard();
+    endGame();
     return;
   }
 
-  setTimeout(computerMove, 600);
+  setTimeout(computerMove, 700);
 }
+
+/* ---------- COMPUTER TURN ---------- */
 
 function computerMove() {
   let move;
@@ -77,19 +106,39 @@ function computerMove() {
         Math.floor(Math.random() * SIZE),
         Math.floor(Math.random() * SIZE)
       ];
-    } while (usedByComputer.has(move.toString()));
+    } while (computerUsed.has(move.toString()));
   }
 
-  usedByComputer.add(move.toString());
+  computerUsed.add(move.toString());
+  const key = move.toString();
+  const cell = playerBoard[move[0]][move[1]];
 
-  if (modeSelect.value === "hard") {
-    neighbors(move[0], move[1]).forEach(n => targets.push(n));
+  if (playerShips.has(key)) {
+    cell.classList.add("hit");
+    playerShips.delete(key);
+    message.textContent = "Computer hit your ship!";
+
+    if (modeSelect.value === "hard") {
+      neighbors(move[0], move[1]).forEach(n => targets.push(n));
+    }
+  } else {
+    cell.classList.add("miss");
+    message.textContent = "Computer missed!";
+  }
+
+  if (playerShips.size === 0) {
+    message.textContent = "Computer wins 😞";
+    endGame();
   }
 }
 
-function disableBoard() {
+function endGame() {
   document.querySelectorAll(".cell").forEach(c => c.disabled = true);
 }
 
-initBoard();
-placeShips();
+/* ---------- INIT ---------- */
+
+message.textContent = "Place your ships (3 clicks)";
+playerBoard = createBoard(playerBoardDiv, placePlayerShip);
+computerBoard = createBoard(computerBoardDiv, playerAttack);
+placeComputerShips();
