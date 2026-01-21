@@ -31,6 +31,11 @@
   </style>
 </head>
 <body>
+  <!-- Background Music -->
+  <audio id="bgMusic" loop>
+    <source src="SnowMusicStudio_-_Epic_Battleship_Soundtrack.mp3" type="audio/mpeg">
+  </audio>
+
   <div id="root"></div>
 
   <script type="text/babel">
@@ -62,6 +67,34 @@
       const [winner, setWinner] = useState(null);
       const [message, setMessage] = useState('');
       const [computerTargets, setComputerTargets] = useState([]);
+      const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+
+      // Start music on first user interaction
+      useEffect(() => {
+        const audio = document.getElementById('bgMusic');
+        const startMusic = () => {
+          if (!isMusicPlaying) {
+            audio.play().catch(e => console.log('Audio play failed:', e));
+            setIsMusicPlaying(true);
+          }
+        };
+        
+        // Try to start music on any click
+        document.addEventListener('click', startMusic, { once: true });
+        
+        return () => document.removeEventListener('click', startMusic);
+      }, []);
+
+      const toggleMusic = () => {
+        const audio = document.getElementById('bgMusic');
+        if (isMusicPlaying) {
+          audio.pause();
+          setIsMusicPlaying(false);
+        } else {
+          audio.play().catch(e => console.log('Audio play failed:', e));
+          setIsMusicPlaying(true);
+        }
+      };
 
       const placeComputerShips = () => {
         const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
@@ -281,6 +314,34 @@
             background: 'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%)',
             pointerEvents: 'none'
           }} />
+
+          {/* Music Control Button */}
+          <button
+            onClick={toggleMusic}
+            style={{
+              position: 'fixed',
+              top: '1rem',
+              right: '1rem',
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '2px solid rgba(59, 130, 246, 0.5)',
+              color: '#60a5fa',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              transition: 'all 0.3s',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)'
+            }}
+            title={isMusicPlaying ? 'Mute Music' : 'Play Music'}
+          >
+            {isMusicPlaying ? '🔊' : '🔇'}
+          </button>
 
           <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
             <h1 style={{
@@ -803,6 +864,12 @@
 
             button:active:not(:disabled) {
               transform: translateY(0);
+            }
+
+            button[title*="Music"]:hover {
+              transform: scale(1.1);
+              border-color: rgba(59, 130, 246, 0.8);
+              box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
             }
           `}</style>
         </div>
