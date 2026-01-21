@@ -1,5 +1,5 @@
-const SIZE = 5;
-const SHIPS = 3;
+const SIZE = 10;
+const SHIP_SIZES = [5, 4, 3, 3, 2];
 
 const playerBoardDiv = document.getElementById("player-board");
 const computerBoardDiv = document.getElementById("computer-board");
