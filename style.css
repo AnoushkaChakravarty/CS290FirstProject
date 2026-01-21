@@ -18,6 +18,10 @@ body {
   cursor: pointer;
 }
 
+.ship {
+  background-color: navy;
+}
+
 .hit {
   background-color: crimson;
   color: white;
